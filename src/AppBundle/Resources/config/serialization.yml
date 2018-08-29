@@ -39,9 +39,9 @@ Sylius\Component\Order\Model\Order:
     createdAt:
       groups: ['order']
     preparationExpectedAt:
-      groups: ['order_timeline']
+      groups: ['order', 'order_timeline']
     pickupExpectedAt:
-      groups: ['order_timeline']
+      groups: ['order', 'order_timeline']
 
 Sylius\Component\Order\Model\OrderItem:
   attributes:
