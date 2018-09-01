@@ -546,6 +546,14 @@ services:
           - '@security.token_storage'
       tags: [ 'kernel.event_subscriber' ]
 
+  'AppBundle\Api\EventSubscriber\RestaurantSubscriber':
+      # arguments:
+      #     - '@coopcycle.delivery.manager'
+      #     - '@routing_service'
+      #     - '@coopcycle.geocoder'
+      #     - '@security.token_storage'
+      tags: [ 'kernel.event_subscriber' ]
+
   'AppBundle\Action\Settings':
       arguments:
         - '@coopcycle.settings_manager'
