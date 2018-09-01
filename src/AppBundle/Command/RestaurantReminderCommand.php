@@ -17,7 +17,6 @@ class RestaurantReminderCommand extends ContainerAwareCommand
     const MINUTES_BEFORE_PREPARATION = 15;
 
     private $orderRepository;
-    // private $orderManager;
     private $restaurantReminderRepository;
 
     protected function configure()
@@ -59,8 +58,6 @@ class RestaurantReminderCommand extends ContainerAwareCommand
         $this->restaurantReminderRepository = $doctrine->getRepository(RestaurantReminder::class);
         $this->em = $doctrine->getManagerForClass(RestaurantReminder::class);
         $this->orderRepository = $this->getContainer()->get('sylius.repository.order');
-        // $this->em = $this->getContainer()->get('sylius.manager.order');
-        // $this->orderManager = $this->getContainer()->get('coopcycle.order_manager');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -78,84 +75,17 @@ class RestaurantReminderCommand extends ContainerAwareCommand
         $produce = $input->getOption('produce');
         $consume = $input->getOption('consume');
 
-        $io->title('Running in producer mode');
+        // TODO Make sure both options are NOT present
 
-        // TODO Select only orders with restaurant != NULL
-        $orders = $this->orderRepository->findBy(
-            ['state' => OrderInterface::STATE_NEW],
-            ['createdAt' => 'ASC']
-        );
-
-        $orders = array_filter($orders, function (OrderInterface $order) use ($now) {
-            $preparationExpectedAt = $order->getPreparationExpectedAt();
-            if (null === $preparationExpectedAt) {
-                return false;
-            }
-
-            return $preparationExpectedAt > $now;
-        });
-
-        $io->text(sprintf('Found %d order(s) waiting to be accepted', count($orders)));
-        if (count($orders) > 0) {
-            $io->listing(array_map(function (OrderInterface $order) {
-                return sprintf('#%d (should start in %s)',
-                    $order->getId(),
-                    Carbon::instance($order->getPreparationExpectedAt())->diffForHumans()
-                );
-            }, $orders));
+        if ($produce) {
+            $io->title('Running in producer mode');
+            $this->produce($now, $io);
         }
 
-        $orders = array_filter($orders, function (OrderInterface $order) use ($now) {
-            $diffInMinutes = Carbon::instance($order->getPreparationExpectedAt())->diffInMinutes($now);
-
-            return $diffInMinutes < self::MINUTES_BEFORE_PREPARATION;
-        });
-
-        $io->text(sprintf('Found %d order(s) needing reminders', count($orders)));
-
-        $reminders = [];
-        foreach ($orders as $order) {
-
-            $qb = $this->restaurantReminderRepository
-                ->createQueryBuilder('r')
-                ->andWhere('r.order = :order')
-                ->andWhere('r.restaurant = :restaurant')
-                ->andWhere('r.restaurant = :restaurant')
-                ->setParameter('order', $order)
-                ->setParameter('restaurant', $order->getRestaurant());
-
-            $reminder = $qb->getQuery()->getOneOrNullResult();
-
-            if (null === $reminder) {
-
-                $scheduledAt = clone $order->getPreparationExpectedAt();
-                $scheduledAt->modify(sprintf('-%d minutes', self::MINUTES_BEFORE_PREPARATION));
-
-                $reminder = new RestaurantReminder($order->getRestaurant(), $order);
-                $reminder->setScheduledAt($scheduledAt);
-                $reminder->setState('scheduled');
-
-                $this->em->persist($reminder);
-            }
-
-            $reminders[] = $reminder;
+        if ($consume) {
+            $io->title('Running in consumer mode');
+            $this->consume($now, $io);
         }
-
-        $io->listing(array_map(function (RestaurantReminder $reminder) {
-            if ($reminder->getId() === null) {
-                return sprintf('#%d (scheduling new reminder at %s)',
-                    $reminder->getOrder()->getId(),
-                    $reminder->getScheduledAt()->format('H:i')
-                );
-            } else {
-                return sprintf('#%d (reminder scheduled at %s)',
-                    $reminder->getOrder()->getId(),
-                    $reminder->getScheduledAt()->format('H:i')
-                );
-            }
-        }, $reminders));
-
-        $this->em->flush();
 
         // $ordersToCancel = array_filter($orders, function (OrderInterface $order) use ($now) {
         //     $preparationExpectedAt = $order->getPreparationExpectedAt();
@@ -232,6 +162,111 @@ class RestaurantReminderCommand extends ContainerAwareCommand
         //     // }
         //     // $io->progressFinish();
         // }
+    }
 
+    private function produce(\DateTime $now, SymfonyStyle $io)
+    {
+        // TODO Select only orders with restaurant != NULL
+        $orders = $this->orderRepository->findBy(
+            ['state' => OrderInterface::STATE_NEW],
+            ['createdAt' => 'ASC']
+        );
+
+        $orders = array_filter($orders, function (OrderInterface $order) use ($now) {
+            $preparationExpectedAt = $order->getPreparationExpectedAt();
+            if (null === $preparationExpectedAt) {
+                return false;
+            }
+
+            return $preparationExpectedAt > $now;
+        });
+
+        $io->text(sprintf('Found %d order(s) waiting to be accepted', count($orders)));
+        if (count($orders) > 0) {
+            $io->listing(array_map(function (OrderInterface $order) {
+                return sprintf('#%d (should start in %s)',
+                    $order->getId(),
+                    Carbon::instance($order->getPreparationExpectedAt())->diffForHumans()
+                );
+            }, $orders));
+        }
+
+        $orders = array_filter($orders, function (OrderInterface $order) use ($now) {
+            $diffInMinutes = Carbon::instance($order->getPreparationExpectedAt())->diffInMinutes($now);
+
+            return $diffInMinutes < self::MINUTES_BEFORE_PREPARATION;
+        });
+
+        $io->text(sprintf('Found %d order(s) needing reminders', count($orders)));
+
+        $reminders = [];
+        foreach ($orders as $order) {
+
+            $qb = $this->restaurantReminderRepository
+                ->createQueryBuilder('r')
+                ->andWhere('r.order = :order')
+                ->andWhere('r.restaurant = :restaurant')
+                ->andWhere('r.restaurant = :restaurant')
+                ->setParameter('order', $order)
+                ->setParameter('restaurant', $order->getRestaurant());
+
+            $reminder = $qb->getQuery()->getOneOrNullResult();
+
+            if (null === $reminder) {
+
+                $scheduledAt = clone $order->getPreparationExpectedAt();
+                $scheduledAt->modify(sprintf('-%d minutes', self::MINUTES_BEFORE_PREPARATION));
+
+                $reminder = new RestaurantReminder($order->getRestaurant(), $order);
+                $reminder->setState('scheduled');
+                $reminder->setScheduledAt($scheduledAt);
+                $reminder->setExpiredAt($order->getPreparationExpectedAt());
+
+                $this->em->persist($reminder);
+            }
+
+            $reminders[] = $reminder;
+        }
+
+        $io->listing(array_map(function (RestaurantReminder $reminder) {
+            if ($reminder->getId() === null) {
+                return sprintf('#%d (scheduling new reminder at %s)',
+                    $reminder->getOrder()->getId(),
+                    $reminder->getScheduledAt()->format('H:i')
+                );
+            } else {
+                return sprintf('#%d (reminder scheduled at %s)',
+                    $reminder->getOrder()->getId(),
+                    $reminder->getScheduledAt()->format('H:i')
+                );
+            }
+        }, $reminders));
+
+        $this->em->flush();
+    }
+
+    private function consume(\DateTime $now, SymfonyStyle $io)
+    {
+        $qb = $this->restaurantReminderRepository
+            ->createQueryBuilder('r')
+            ->andWhere('r.state = :state')
+            ->andWhere('r.scheduledAt <= :now')
+            ->andWhere('r.expiredAt > :now')
+            ->setParameter('now', $now)
+            ->setParameter('state', 'scheduled');
+
+        $reminders = $qb->getQuery()->getResult();
+
+        $io->text(sprintf('Found %d reminders(s) scheduled', count($reminders)));
+        $io->listing(array_map(function (RestaurantReminder $reminder) {
+            return sprintf('#%d (should be sent in %s)',
+                $reminder->getOrder()->getId(),
+                Carbon::instance($reminder->getScheduledAt())->diffForHumans()
+            );
+        }, $reminders));
+
+        foreach ($reminders as $reminder) {
+            // TODO Send reminders
+        }
     }
 }

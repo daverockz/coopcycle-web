@@ -10,6 +10,7 @@ class RestaurantReminder
     private $restaurant;
     private $order;
     private $scheduledAt;
+    private $expiredAt;
     private $state;
     private $createdAt;
     private $updatedAt;
@@ -55,6 +56,18 @@ class RestaurantReminder
     public function setScheduledAt($scheduledAt)
     {
         $this->scheduledAt = $scheduledAt;
+
+        return $this;
+    }
+
+    public function getExpiredAt()
+    {
+        return $this->expiredAt;
+    }
+
+    public function setExpiredAt($expiredAt)
+    {
+        $this->expiredAt = $expiredAt;
 
         return $this;
     }

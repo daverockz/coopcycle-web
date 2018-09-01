@@ -13,6 +13,9 @@ AppBundle\Entity\RestaurantReminder:
         scheduledAt:
             type: datetime
             column: scheduled_at
+        expiredAt:
+            type: datetime
+            column: expired_at
         createdAt:
             type: datetime
             column: created_at
